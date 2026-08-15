@@ -7,7 +7,7 @@
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis
 
@@ -43,7 +43,7 @@ class DeliveryWorker:
             ticket.ticket_id,
             (ticket.answer_text or "")[:120],
         )
-        ticket.delivered_at = datetime.now(timezone.utc)
+        ticket.delivered_at = datetime.now(UTC)
         self._audit.save_ticket(ticket)
         self._audit.log(
             ticket.ticket_id,

@@ -4,7 +4,7 @@
 оператора и никогда не прорастает обратно в горячий путь.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis
 
@@ -65,9 +65,7 @@ class GenerationWorker:
         # Обезличивание — единственная точка, после которой текст покидает контур.
         # Карта замен живёт в рамках этого вызова: регидрация происходит здесь же.
         scrubbed, pii_map = scrub(ticket.text_normalized)
-        self._audit.log(
-            ticket.ticket_id, "Generated.scrubbed", placeholders=sorted(pii_map.keys())
-        )
+        self._audit.log(ticket.ticket_id, "Generated.scrubbed", placeholders=sorted(pii_map.keys()))
 
         context = [hit.fields.get("body", "") for hit in chunks]
         try:
@@ -83,7 +81,7 @@ class GenerationWorker:
         ticket.conf_gen = draft.confidence
         ticket.llm_flags = draft.model_dump(exclude={"answer_draft"})
         ticket.draft_text = rehydrate(draft.answer_draft, pii_map)
-        ticket.generated_at = datetime.now(timezone.utc)
+        ticket.generated_at = datetime.now(UTC)
 
         self._audit.log(
             ticket.ticket_id,

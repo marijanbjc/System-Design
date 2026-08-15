@@ -34,6 +34,7 @@ def scrub(text: str) -> tuple[str, PiiMap]:
     scrubbed = text
 
     for label, pattern in _PATTERNS:
+
         def _replace(match: re.Match[str], label: str = label) -> str:
             # Группа 1 — когда шаблону нужен якорь по ключевому слову, иначе всё совпадение.
             value = match.group(1) if match.groups() else match.group(0)

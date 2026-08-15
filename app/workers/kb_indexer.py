@@ -12,8 +12,8 @@
 import logging
 import uuid
 
-from app.ml.encoder import embed
 from app.llm.mock import MockLLM
+from app.ml.encoder import embed
 from app.storage.vector_index import VectorStore
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,9 @@ import re
 from app.config import get_settings
 
 _HTML_TAG = re.compile(r"<[^>]+>")
-_QUOTE_LINE = re.compile(r"^\s*(>+|On .+ wrote:|\d{1,2}\.\d{1,2}\.\d{2,4}.*пишет:).*$", re.MULTILINE)
+_QUOTE_LINE = re.compile(
+    r"^\s*(>+|On .+ wrote:|\d{1,2}\.\d{1,2}\.\d{2,4}.*пишет:).*$", re.MULTILINE
+)
 _SIGNATURE = re.compile(
     r"(?:^|\n)\s*(--\s*$|С уважением|Best regards|Sent from my|Отправлено с)[\s\S]*",
     re.IGNORECASE,

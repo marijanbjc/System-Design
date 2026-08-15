@@ -16,8 +16,8 @@ from app.routing.router import Router
 from app.storage.audit import AuditStore
 from app.storage.vector_index import VectorStore
 from app.workers.delivery import DeliveryWorker
-from app.workers.kb_indexer import KbIndexer
 from app.workers.generation import GenerationWorker
+from app.workers.kb_indexer import KbIndexer
 
 
 @dataclass

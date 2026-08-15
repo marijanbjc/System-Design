@@ -9,6 +9,7 @@ from app.models import AutomationLevel
 
 # --- детекция всплеска (architecture.md §6.1) ----------------------------------------------
 
+
 def bump_surge_counter(client: redis.Redis, topic: str, now: float | None = None) -> None:
     """Инкрементировать текущий минутный бакет по теме.
 
@@ -58,6 +59,7 @@ def delete_surge_text(client: redis.Redis, topic: str) -> None:
 
 
 # --- политика автоматизации ----------------------------------------------------------------
+
 
 def automation_level(client: redis.Redis, topic: str) -> AutomationLevel:
     """Детерминированный гейт по теме. Неизвестная тема — REVIEW_REQUIRED."""

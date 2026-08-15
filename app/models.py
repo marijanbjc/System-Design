@@ -1,6 +1,6 @@
 """Модели предметной области: контракт API, запись тикета и структурированный выход LLM."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -101,7 +101,7 @@ class Ticket(BaseModel):
     user_ref: str | None = None
     channel: Channel
     channel_ref: str | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Три представления текста, которые нельзя путать: сырой хранится у нас (это наш
     # контур), нормализованный идёт в модели, обезличенный существует только на выходе.

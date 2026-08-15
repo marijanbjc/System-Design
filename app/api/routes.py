@@ -1,7 +1,7 @@
 """HTTP-поверхность: приём обращений, статус, ревью оператора, админ-ручки."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Response
 
@@ -71,7 +71,7 @@ def review_ticket(ticket_id: str, payload: ReviewIn) -> TicketResponse:
     ticket.operator_id = payload.operator_id
     ticket.review_action = payload.action
     ticket.operator_touched = True
-    ticket.reviewed_at = datetime.now(timezone.utc)
+    ticket.reviewed_at = datetime.now(UTC)
     if payload.action != "rejected":
         ticket.answer_text = payload.answer_text or ticket.draft_text
         ticket.answer_source = "operator"

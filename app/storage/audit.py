@@ -8,7 +8,7 @@
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,7 @@ class AuditStore:
                 (
                     ticket_id,
                     event,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                     json.dumps(payload, ensure_ascii=False, default=str),
                 ),
             )

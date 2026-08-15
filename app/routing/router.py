@@ -7,7 +7,7 @@
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis
 
@@ -164,7 +164,7 @@ class Router:
 
     def _finish(self, ticket: Ticket, event: str, **payload: object) -> Ticket:
         """Зафиксировать исход, а готовый ответ поставить в очередь доставки."""
-        ticket.routed_at = datetime.now(timezone.utc)
+        ticket.routed_at = datetime.now(UTC)
         self._audit.save_ticket(ticket)
         self._audit.log(
             ticket.ticket_id, event, route=ticket.route, status=ticket.status, **payload
