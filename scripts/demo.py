@@ -1,6 +1,8 @@
-"""End-to-end demo: one happy path and several fallback / risky paths.
+"""Сквозное демо: два happy path и несколько fallback / risky path.
 
-Runs against the real FastAPI app in-process, so no server is required.
+Работает с настоящим FastAPI-приложением в том же процессе, поэтому поднимать сервер
+не нужно. Проверяемые утверждения зафиксированы в assert'ах — демо падает, если
+маршрут разъехался с задуманным.
 """
 
 import redis
@@ -42,7 +44,7 @@ def main() -> None:
     connection.flushdb()
     seed(connection)
 
-    from app.api import app
+    from app.main import app
 
     client = TestClient(app)
 
@@ -68,7 +70,11 @@ def main() -> None:
     print("    а значения восстановлены уже после ответа модели")
 
     _banner("FALLBACK 1 · Tier 2 — контекста в базе знаний не хватило, гейт не пропустил")
-    ticket = _submit(client, "вопрос без достаточного контекста", "какие товары нельзя вернуть обратно в магазин")
+    ticket = _submit(
+        client,
+        "вопрос без достаточного контекста",
+        "можно ли обменять товар на другой размер вместо возврата",
+    )
     client.post("/admin/run-worker")
     after = client.get(f"/tickets/{ticket['ticket_id']}").json()
     print(f"  итог:   route={after['route']} status={after['status']} (авто-отправки не было)")
