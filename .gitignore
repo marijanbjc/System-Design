@@ -5,3 +5,6 @@
 .DS_store
 CLAUDE.md
 System_Design_ITMO.docx
+.env
+audit.db
+__pycache__
