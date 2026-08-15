@@ -61,7 +61,8 @@ def main() -> None:
         "Мой телефон +7 916 123-45-67.",
     )
     assert ticket["status"] == "pending_generation", ticket
-    print(f"\n  воркер: обработано {client.post('/admin/run-worker').json()['processed']} задач")
+    stats = client.post("/admin/run-worker").json()
+    print(f"\n  воркер: сгенерировано {stats['generated']}, доставлено {stats['delivered']}")
     after = client.get(f"/tickets/{ticket['ticket_id']}").json()
     print(f"  итог:   route={after['route']} status={after['status']}")
     print(f"  ответ:  {(after.get('answer') or '(ушло оператору)')[:200]}")

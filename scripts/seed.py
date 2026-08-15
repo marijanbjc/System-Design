@@ -24,8 +24,9 @@ POLICY: dict[str, AutomationLevel] = {
     "loyalty": AutomationLevel.AUTO_OK,
     "account": AutomationLevel.REVIEW_REQUIRED,
     "payment": AutomationLevel.REVIEW_REQUIRED,
-    "billing_dispute": AutomationLevel.OPERATOR_ONLY,
-    "security": AutomationLevel.OPERATOR_ONLY,
+    "payment_dispute": AutomationLevel.OPERATOR_ONLY,
+    "account_security": AutomationLevel.OPERATOR_ONLY,
+    "general": AutomationLevel.REVIEW_REQUIRED,
 }
 
 # Авто-ответ при всплеске разрешён только темам, для которых менеджер написал текст.
