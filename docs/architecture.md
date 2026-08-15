@@ -114,6 +114,7 @@ flowchart TD
 | `route` | `tier1_auto` \| `surge` \| `tier2_auto` \| `tier2_review` \| `tier3_operator` | выбранная ветвь |
 | `status` | `answered` \| `answered_surge` \| `pending_generation` \| `pending_operator` \| `awaiting_approval` | состояние тикета |
 | `answer` | str \| `null` | непусто только при `200` |
+| `answer_source` | `retrieved` \| `surge` \| `generated` \| `operator` \| `null` | откуда взят ответ: индекс троек, заглушка всплеска, генерация, оператор |
 
 `answered_surge` вынесен отдельно осознанно: это не «мы решили вопрос», а «мы отписались заготовленным
 текстом по известной аварии». Смешивать нельзя — иначе метрика автоматизации во время сбоя вырастет по
@@ -296,6 +297,8 @@ def handle(raw_message):
     emb       = embed(text_norm)                      # локальный эмбеддинг, один раз
     topic, risk, conf_cls = classify(emb)
     level     = policy.get(topic, "REVIEW_REQUIRED")  # AUTO_OK | REVIEW_REQUIRED | OPERATOR_ONLY
+    if conf_cls < CONF_CLS_MIN:
+        level = "REVIEW_REQUIRED"                     # теме не доверяем — и политике по ней тоже
 
     # 1) Чувствительная тема, небезопасно, инъекция или высокий риск — только человек
     if level == "OPERATOR_ONLY" or unsafe or injection or risk == "high":
@@ -340,7 +343,10 @@ def gate(level, risk, conf_gen, llm, injection, unsafe):   # воркер, по�
 
 `risk` участвует дважды: отсекает авто на горячем пути и в гейте после генерации. Обученные модели
 дают тему/риск/уверенность, детерминированные таблицы (политика, дефолтные ответы) дают жёсткие
-гарантии. Пороги `TAU_HIGH`, `TAU_CONF`, `TAU_CTX`, `TAU_KB`, `SURGE_THRESHOLD` — в конфиге, не в коде.
+гарантии. Пороги `TAU_HIGH`, `TAU_CONF`, `TAU_CTX`, `TAU_KB`, `SURGE_THRESHOLD`, `CONF_CLS_MIN` — в
+конфиге, не в коде. `CONF_CLS_MIN` — минимальная уверенность классификатора, ниже которой мы не
+доверяем ни теме, ни политике по ней и принудительно уводим тему в `REVIEW_REQUIRED` (безопасный
+дефолт вместо молчаливого угадывания).
 
 ### 8.2. Схема ответа LLM и защита от prompt injection
 
