@@ -1,7 +1,8 @@
 """Сборка зависимостей приложения в одном месте.
 
 Здесь видно, что от чего зависит: горячий путь — от классификатора, векторного
-хранилища и аудита; воркер — дополнительно от LLM.
+хранилища и аудита; воркер генерации — дополнительно от LLM; воркер доставки — только
+от аудита и очереди.
 """
 
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from app.ml.classifier import Classifier
 from app.routing.router import Router
 from app.storage.audit import AuditStore
 from app.storage.vector_index import VectorStore
+from app.workers.delivery import DeliveryWorker
 from app.workers.generation import GenerationWorker
 
 
@@ -26,6 +28,7 @@ class Container:
     audit: AuditStore
     router: Router
     worker: GenerationWorker
+    delivery: DeliveryWorker
 
 
 container: Container | None = None
@@ -48,6 +51,7 @@ def build_container() -> Container:
         audit=audit,
         router=Router(client, classifier, vectors, audit),
         worker=GenerationWorker(client, vectors, audit, MockLLM()),
+        delivery=DeliveryWorker(client, audit),
     )
 
 

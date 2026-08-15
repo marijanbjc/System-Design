@@ -35,6 +35,12 @@ def consume(client: redis.Redis, stream: str, count: int = 10) -> list[tuple[str
     return result
 
 
-def depth(client: redis.Redis, stream: str) -> int:
-    """Глубина очереди — метрика, по которой срабатывает алерт «нужны ресурсы»."""
-    return int(client.xlen(stream))
+def peek(client: redis.Redis, stream: str, count: int = 50) -> list[dict[str, Any]]:
+    """Прочитать записи, не удаляя их: так очередь оператора показывается в API."""
+    entries = client.xrange(stream, count=count)
+    payloads = []
+    for _, fields in entries:
+        raw = fields.get(b"payload") or fields.get("payload")
+        if raw is not None:
+            payloads.append(json.loads(raw.decode() if isinstance(raw, bytes) else raw))
+    return payloads

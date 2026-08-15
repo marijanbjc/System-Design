@@ -128,7 +128,6 @@ class Router:
         """Tier 1: отдаём предодобренный ответ как есть, без LLM и без оператора."""
         ticket.route = Route.TIER1_AUTO
         ticket.status = Status.ANSWERED
-        ticket.is_typical = True
         ticket.auto_sent = True
         ticket.answer_text = answer
         ticket.answer_source = "retrieved"
@@ -164,10 +163,16 @@ class Router:
         return self._finish(ticket, "Routed.generation", best_sim=ticket.best_sim)
 
     def _finish(self, ticket: Ticket, event: str, **payload: object) -> Ticket:
-        """Зафиксировать исход в тикете и в аудите."""
+        """Зафиксировать исход, а готовый ответ поставить в очередь доставки."""
         ticket.routed_at = datetime.now(timezone.utc)
         self._audit.save_ticket(ticket)
         self._audit.log(
             ticket.ticket_id, event, route=ticket.route, status=ticket.status, **payload
         )
+        if ticket.status in (Status.ANSWERED, Status.ANSWERED_SURGE):
+            streams.publish(
+                self._redis,
+                get_settings().stream_delivery,
+                {"ticket_id": ticket.ticket_id, "channel": ticket.channel},
+            )
         return ticket

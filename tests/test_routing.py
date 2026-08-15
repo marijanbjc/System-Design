@@ -83,3 +83,25 @@ def test_неизвестная_тема_не_проваливается_в_ав
     body = _post(client, "а какая погода завтра в москве и кто выиграл футбол").json()
 
     assert body["route"] != "tier1_auto"
+
+
+def test_готовый_ответ_попадает_в_очередь_доставки(client) -> None:
+    """Ответ Tier 1 не заканчивается на HTTP-ответе: его ещё надо доставить в канал."""
+    from app.api.deps import get_container
+
+    body = _post(client, "как оформить возврат товара если он не подошёл по размеру").json()
+    delivered = client.post("/admin/run-worker").json()["delivered"]
+
+    assert delivered >= 1
+    ticket = get_container().audit.load_ticket(body["ticket_id"])
+    assert ticket.delivered_at is not None
+    assert any(e["event"] == "Delivered" for e in get_container().audit.trail(body["ticket_id"]))
+
+
+def test_очередь_оператора_показывает_причину_эскалации(client) -> None:
+    """Оператор должен видеть не только тикет, но и почему он к нему попал."""
+    body = _post(client, "мой аккаунт взломали, кто-то оформил чужие заказы").json()
+    queue = client.get("/operator/queue").json()
+
+    assert any(task["ticket_id"] == body["ticket_id"] for task in queue)
+    assert all("reason" in task for task in queue)

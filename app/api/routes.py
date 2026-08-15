@@ -1,13 +1,16 @@
 """HTTP-поверхность: приём обращений, статус, ревью оператора, админ-ручки."""
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Response
 
 from app.api.deps import get_container
 from app.api.schemas import ArticleIn, PolicyIn, ReviewIn, SurgeDefaultIn, TripleIn
+from app.config import get_settings
 from app.ml.encoder import embed
 from app.models import IncomingMessage, Status, Ticket, TicketResponse
+from app.queues import streams
 from app.storage import state
 
 router = APIRouter()
@@ -68,10 +71,16 @@ def review_ticket(ticket_id: str, payload: ReviewIn) -> TicketResponse:
     ticket.operator_id = payload.operator_id
     ticket.review_action = payload.action
     ticket.operator_touched = True
+    ticket.reviewed_at = datetime.now(timezone.utc)
     if payload.action != "rejected":
         ticket.answer_text = payload.answer_text or ticket.draft_text
         ticket.answer_source = "operator"
         ticket.status = Status.ANSWERED
+        streams.publish(
+            deps.redis,
+            get_settings().stream_delivery,
+            {"ticket_id": ticket.ticket_id, "channel": ticket.channel},
+        )
     deps.audit.save_ticket(ticket)
     deps.audit.log(ticket_id, "Reviewed", action=payload.action, operator_id=payload.operator_id)
     return _to_response(ticket)
@@ -123,7 +132,14 @@ def delete_surge_default(topic: str) -> dict[str, str]:
     return {"topic": topic}
 
 
+@router.get("/operator/queue", tags=["Оператор"])
+def operator_queue() -> list[dict]:
+    """Очередь задач оператора: что именно ждёт человека и по какой причине."""
+    return streams.peek(get_container().redis, get_settings().stream_review)
+
+
 @router.post("/admin/run-worker", tags=["Админ"])
 def run_worker() -> dict[str, int]:
-    """Разобрать очередь генерации по требованию — замена долгоживущему воркеру в PoC."""
-    return {"processed": get_container().worker.run_once()}
+    """Разобрать очереди генерации и доставки — замена долгоживущим воркерам в PoC."""
+    deps = get_container()
+    return {"generated": deps.worker.run_once(), "delivered": deps.delivery.run_once()}
