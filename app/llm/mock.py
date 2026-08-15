@@ -1,35 +1,36 @@
-"""Deterministic mock LLM. Default provider so the demo runs without an API key.
+"""Детерминированный мок LLM — провайдер по умолчанию, работает без API-ключа.
 
-It does not paraphrase: it stitches the retrieved chunks into an answer and derives
-its flags from measurable properties of the input. That keeps the demo reproducible
-and makes the gate observable — the same ticket always takes the same branch.
+Он не перефразирует: сшивает найденные фрагменты в ответ, а флаги выводит из
+измеримых свойств входа. За счёт этого демо воспроизводимо, а гейт наблюдаем —
+один и тот же тикет всегда идёт по одной и той же ветке.
 """
 
 import re
 
 from app.llm.base import LLMDraft, LLMUnavailable, build_prompt
-from app.pii import contains_pii
+from app.preprocessing.pii import contains_pii
 
 _OFF_TOPIC_MARKERS = re.compile(
     r"\b(погод\w+|политик\w+|президент|курс\s+валют|рецепт|футбол)\b", re.IGNORECASE
 )
 _TOXIC_MARKERS = re.compile(r"\b(идиот|дебил|тварь|ублюд\w+|убью)\b", re.IGNORECASE)
-_FAIL_MARKER = "__LLM_FAIL__"  # lets the demo exercise the degradation path
+_FAIL_MARKER = "__LLM_FAIL__"  # позволяет демонстрировать путь деградации
 
 
 class MockLLM:
-    """Contract-compatible stand-in for a real provider."""
+    """Совместимая по контракту замена реального провайдера."""
 
     model_name = "mock-deterministic-v1"
 
     def generate(self, question_scrubbed: str, context_chunks: list[str]) -> tuple[LLMDraft, int]:
+        """Сгенерировать структурированный черновик по найденному контексту."""
         if _FAIL_MARKER in question_scrubbed:
-            raise LLMUnavailable("mock provider forced failure")
+            raise LLMUnavailable("мок провайдера принудительно уронён")
 
-        # Belt and braces: the scrubbing stage runs before this call, but if raw PII
-        # ever reached a real provider it would be unrecoverable. Fail loudly instead.
+        # Подстраховка: стадия обезличивания идёт раньше, но если бы сырые ПДН всё же
+        # доехали до реального провайдера, это было бы необратимо. Лучше упасть громко.
         if contains_pii(question_scrubbed):
-            raise LLMUnavailable("refusing to process text that still contains PII")
+            raise LLMUnavailable("отказ обрабатывать текст, в котором остались ПДН")
 
         prompt = build_prompt(question_scrubbed, context_chunks)
         tokens = max(1, len(prompt) // 4)
@@ -61,15 +62,15 @@ class MockLLM:
 
     @staticmethod
     def _context_score(question: str, chunks: list[str]) -> float:
-        """Lexical overlap between the question and the retrieved context.
+        """Лексическое пересечение вопроса с найденным контекстом.
 
-        A stand-in for the model's own judgement of context sufficiency: deterministic,
-        and it moves in the right direction when retrieval is poor.
+        Заменитель самооценки модели: детерминированный и двигающийся в правильную
+        сторону, когда ретрив сработал плохо.
         """
         if not chunks:
             return 0.0
-        # Placeholders left by scrubbing carry no meaning; counting them in the
-        # denominator would understate context sufficiency for every ticket with PII.
+        # Плейсхолдеры после обезличивания смысла не несут; учитывать их в знаменателе
+        # значило бы занижать достаточность контекста каждому тикету с ПДН.
         without_placeholders = re.sub(r"\[[A-Z]+_\d+\]", " ", question)
         question_words = {w for w in re.findall(r"\w{4,}", without_placeholders.lower())}
         if not question_words:

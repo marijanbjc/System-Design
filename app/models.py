@@ -1,4 +1,4 @@
-"""Pydantic schemas: API contract, ticket state, and the LLM structured output."""
+"""Модели предметной области: контракт API, запись тикета и структурированный выход LLM."""
 
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 
 class Channel(StrEnum):
+    """Канал, из которого пришло обращение."""
+
     EMAIL = "email"
     CHAT = "chat"
     WEB = "web"
@@ -15,12 +17,16 @@ class Channel(StrEnum):
 
 
 class Risk(StrEnum):
+    """Уровень риска обращения: определяется классификатором и ужесточается правилами."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
 class Route(StrEnum):
+    """Выбранная роутером ветвь обработки."""
+
     TIER1_AUTO = "tier1_auto"
     SURGE = "surge"
     TIER2_AUTO = "tier2_auto"
@@ -29,6 +35,13 @@ class Route(StrEnum):
 
 
 class Status(StrEnum):
+    """Состояние тикета.
+
+    `answered_surge` вынесен отдельно осознанно: это не «мы решили вопрос», а «мы
+    отписались заготовленным текстом по известной аварии». Смешивать нельзя — иначе
+    метрика автоматизации во время сбоя вырастет по причине, не связанной с качеством.
+    """
+
     NEW = "new"
     ANSWERED = "answered"
     ANSWERED_SURGE = "answered_surge"
@@ -38,13 +51,15 @@ class Status(StrEnum):
 
 
 class AutomationLevel(StrEnum):
+    """Детерминированная политика по теме — жёсткая гарантия поверх вероятностной модели."""
+
     AUTO_OK = "AUTO_OK"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     OPERATOR_ONLY = "OPERATOR_ONLY"
 
 
 class IncomingMessage(BaseModel):
-    """Channel-agnostic inbound message produced by an input adapter."""
+    """Единый вид обращения, к которому входной адаптер приводит сообщение любого канала."""
 
     channel: Channel
     text_raw: str = Field(min_length=1)
@@ -53,7 +68,7 @@ class IncomingMessage(BaseModel):
 
 
 class TicketResponse(BaseModel):
-    """Uniform body for both 200 and 202 (architecture.md 4.1)."""
+    """Единое тело ответа и для 200, и для 202 (architecture.md §4.1)."""
 
     ticket_id: str
     topic: str
@@ -64,11 +79,12 @@ class TicketResponse(BaseModel):
 
 
 class LLMDraft(BaseModel):
-    """Structured LLM output. Deliberately carries no `topic` and no `risk`.
+    """Структурированный выход LLM.
 
-    Those come from our own classifier before the call, so a prompt injection has
-    no lever to widen its own permissions. Every flag here can only tighten the
-    route, never unlock auto-send.
+    В схеме намеренно нет полей `topic` и `risk`: их определяет наш классификатор до
+    вызова модели, поэтому у prompt injection нет рычага расширить собственные права.
+    Все флаги ниже работают только в сторону ужесточения маршрута — увести тикет к
+    человеку они могут, разрешить авто-отправку нет.
     """
 
     answer_draft: str
@@ -79,7 +95,7 @@ class LLMDraft(BaseModel):
 
 
 class Ticket(BaseModel):
-    """Full ticket record; the flag set makes the route reconstructable."""
+    """Полная запись тикета: по набору полей и флагов маршрут восстанавливается целиком."""
 
     ticket_id: str
     user_ref: str | None = None
@@ -87,6 +103,8 @@ class Ticket(BaseModel):
     channel_ref: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    # Три представления текста, которые нельзя путать: сырой хранится у нас (это наш
+    # контур), нормализованный идёт в модели, обезличенный существует только на выходе.
     text_raw: str
     text_normalized: str = ""
 
@@ -104,6 +122,8 @@ class Ticket(BaseModel):
     surge: bool = False
     injection_suspected: bool = False
     unsafe_prefilter: bool = False
+    # Группирует тикеты одного сбоя: отдельная корзина в метриках и, в целевой картине,
+    # массовая рассылка при резолве инцидента одной операцией.
     incident_id: str | None = None
 
     best_sim: float = 0.0
@@ -120,6 +140,9 @@ class Ticket(BaseModel):
     tokens: int = 0
     cost: float = 0.0
 
+    # draft_text отдельно от answer_text: без этой пары не отличить «оператор одобрил
+    # как есть» от «оператор переписал» — это и метрика качества черновиков, и
+    # обучающий сигнал для будущей джобы пополнения индекса троек.
     draft_text: str | None = None
     answer_text: str | None = None
     answer_source: str | None = None

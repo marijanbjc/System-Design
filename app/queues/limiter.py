@@ -1,8 +1,8 @@
-"""Token-bucket rate limiter and daily budget breaker in front of every LLM call.
+"""Token bucket и бюджетный предохранитель перед каждым обращением к LLM.
 
-The limiter exists to protect the provider from us, not to save tokens: an operator
-ticket costs ~150 RUB and an LLM call fractions of one. The daily budget is a fuse
-against a bug or a retry loop, not a cost optimization.
+Ограничитель нужен не ради экономии токенов, а чтобы не сделать провайдера
+неработоспособным: тикет у оператора стоит ~150 ₽, вызов модели — доли рубля.
+Дневной бюджет — предохранитель от бага и петли ретраев, а не инструмент экономии.
 """
 
 import time
@@ -14,7 +14,8 @@ from app.config import get_settings
 BUCKET_KEY = "llm:bucket"
 BUDGET_KEY_PREFIX = "llm:budget:"
 
-# Atomic take-a-permit: refill by elapsed time, then spend one if available.
+# Атомарная выдача разрешения: сначала пополняем ведро по прошедшему времени,
+# затем тратим одно, если есть. Lua нужен, чтобы это не разъезжалось между репликами.
 _TAKE_TOKEN_LUA = """
 local key = KEYS[1]
 local rate = tonumber(ARGV[1])
@@ -43,14 +44,14 @@ return allowed
 
 
 class RateLimiter:
-    """Shared across all worker replicas: the limit is global, not per process."""
+    """Общий на все реплики воркера: лимит глобальный, а не на процесс."""
 
     def __init__(self, client: redis.Redis) -> None:
         self._client = client
         self._script = client.register_script(_TAKE_TOKEN_LUA)
 
     def try_acquire(self) -> bool:
-        """Take one permit. False means the caller must wait, not drop the task."""
+        """Взять одно разрешение. False означает «подождать», а не «выбросить задачу»."""
         settings = get_settings()
         allowed = self._script(
             keys=[BUCKET_KEY],
@@ -59,7 +60,7 @@ class RateLimiter:
         return bool(int(allowed))
 
     def acquire(self, timeout: float = 10.0, poll: float = 0.05) -> bool:
-        """Block until a permit is free or the timeout expires."""
+        """Подождать разрешения до таймаута. Очередь притормаживает вход сама собой."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.try_acquire():
@@ -69,7 +70,7 @@ class RateLimiter:
 
 
 class BudgetBreaker:
-    """Daily token budget. Once tripped, auto-generation stops and tickets go to humans."""
+    """Дневной бюджет токенов. Сработал — авто-генерация выключается, тикеты идут к людям."""
 
     def __init__(self, client: redis.Redis) -> None:
         self._client = client
@@ -78,10 +79,12 @@ class BudgetBreaker:
         return f"{BUDGET_KEY_PREFIX}{time.strftime('%Y-%m-%d')}"
 
     def spent(self) -> int:
+        """Сколько токенов израсходовано за сегодня."""
         value = self._client.get(self._key())
         return int(value) if value else 0
 
     def charge(self, tokens: int) -> None:
+        """Списать израсходованные токены."""
         key = self._key()
         pipe = self._client.pipeline()
         pipe.incrby(key, tokens)
@@ -89,5 +92,5 @@ class BudgetBreaker:
         pipe.execute()
 
     def is_open(self) -> bool:
-        """True when the fuse has blown and we must stop calling the provider."""
+        """True, когда предохранитель разомкнут и звать провайдера больше нельзя."""
         return self.spent() >= get_settings().llm_daily_token_budget
