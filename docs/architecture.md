@@ -249,6 +249,7 @@ MGET   surge:payment:29418732 ... surge:payment:29418723    # чтение, 10 �
 - инцидент: `incident_id?` — группирует тикеты одного всплеска, чтобы считать их отдельной корзиной
   и в будущем разослать уведомление о резолве одной операцией;
 - поиск: `best_sim`, `best_chunk_sim`, `retrieved_triple_ids`, `retrieved_chunk_ids`;
+- версии моделей: `encoder_version`, `classifier_version` — без них решение невоспроизводимо;
 - генерация: `llm_model`, `prompt_version`, `conf_gen`, `llm_flags`, `tokens`, `cost`;
 - ответ: `draft_text` (что предложила система), `answer_text` (что реально ушло), `answer_source`;
 - оператор: `operator_id?`, `review_action ∈ {approved, edited, rejected}?`;
@@ -327,7 +328,7 @@ def pre_gate(chunks):                                 # воркер, до вы�
 def gate(level, risk, conf_gen, llm, injection, unsafe):   # воркер, после вызова модели
     if injection or unsafe or level != "AUTO_OK" or risk != "low":
         return operator_review                        # флаги горячего пути доезжают сюда
-    if llm.is_toxic or not llm.is_on_topic or not llm.has_enough_context:
+    if llm.is_toxic or not llm.is_on_topic or llm.has_enough_context < TAU_CTX:
         return operator_review
     return auto_send if conf_gen >= TAU_CONF else operator_review
 ```
@@ -339,7 +340,7 @@ def gate(level, risk, conf_gen, llm, injection, unsafe):   # воркер, по�
 
 `risk` участвует дважды: отсекает авто на горячем пути и в гейте после генерации. Обученные модели
 дают тему/риск/уверенность, детерминированные таблицы (политика, дефолтные ответы) дают жёсткие
-гарантии. Пороги `TAU_HIGH`, `TAU_CONF`, `TAU_KB`, `SURGE_THRESHOLD` — в конфиге, не в коде.
+гарантии. Пороги `TAU_HIGH`, `TAU_CONF`, `TAU_CTX`, `TAU_KB`, `SURGE_THRESHOLD` — в конфиге, не в коде.
 
 ### 8.2. Схема ответа LLM и защита от prompt injection
 
@@ -357,10 +358,10 @@ def gate(level, risk, conf_gen, llm, injection, unsafe):   # воркер, по�
 ```python
 class LLMDraft(BaseModel):
     answer_draft: str
-    has_enough_context: bool     # хватило ли найденных фрагментов БЗ
+    has_enough_context: float    # достаточность найденных фрагментов БЗ, [0,1] → сверяем с TAU_CTX
     is_on_topic: bool            # относится ли вопрос к нашей компании
     is_toxic: bool               # токсичный / небезопасный запрос
-    confidence: float            # самооценка уверенности, [0, 1]
+    confidence: float            # самооценка уверенности, [0, 1] → сверяем с TAU_CONF
 ```
 
 Следствие: максимум, чего добьётся успешная инъекция, — испорченный черновик, который на рисковой теме
@@ -461,7 +462,7 @@ class LLMDraft(BaseModel):
 
 **Fallback / risky path — эскалация оператору.** Три подслучая:
 - *Нетиповой / неуверенный:* вопроса нет в индексе (`best.sim < TAU_HIGH`) → Tier 2 → пре-гейт пройден
-  → обезличивание → мок-LLM возвращает низкую `confidence` или `has_enough_context=false` → гейт не
+  → обезличивание → мок-LLM возвращает низкую `confidence` или `has_enough_context < TAU_CTX` → гейт не
   пропускает → очередь оператору (`202`, `pending_operator`).
 - *Рисковый / запрещённый:* тема `OPERATOR_ONLY` (платёжный спор) или высокий риск → сразу оператору,
   без вызова LLM (`202`).
