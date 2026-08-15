@@ -1,0 +1,7 @@
+.venv
+._pycache/
+.pytest_cache
+.idea
+.DS_store
+CLAUDE.md
+System_Design_ITMO.docx
