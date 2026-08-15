@@ -48,7 +48,7 @@ def test_в_llm_клиент_не_уходят_персональные_данн
                 "Мой телефон +7 916 123-45-67, почта maria@example.com",
             },
         )
-        client.post("/admin/run-worker")
+        client.post("/admin/drain-queues")
     finally:
         worker._llm.generate = original
 
@@ -61,7 +61,7 @@ def test_в_llm_клиент_не_уходят_персональные_данн
 
 def test_мок_отказывается_обрабатывать_сырые_пдн() -> None:
     """Второй рубеж: сам клиент падает, если обезличивание почему-то не отработало."""
-    from app.llm.base import LLMUnavailable
+    from app.llm.mock import LLMUnavailable
     from app.llm.mock import MockLLM
 
     with pytest.raises(LLMUnavailable):

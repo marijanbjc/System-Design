@@ -61,7 +61,7 @@ def main() -> None:
         "Мой телефон +7 916 123-45-67.",
     )
     assert ticket["status"] == "pending_generation", ticket
-    stats = client.post("/admin/run-worker").json()
+    stats = client.post("/admin/drain-queues").json()
     print(f"\n  воркер: сгенерировано {stats['generated']}, доставлено {stats['delivered']}")
     after = client.get(f"/tickets/{ticket['ticket_id']}").json()
     print(f"  итог:   route={after['route']} status={after['status']}")
@@ -76,7 +76,7 @@ def main() -> None:
         "вопрос без достаточного контекста",
         "можно ли обменять товар на другой размер вместо возврата",
     )
-    client.post("/admin/run-worker")
+    client.post("/admin/drain-queues")
     after = client.get(f"/tickets/{ticket['ticket_id']}").json()
     print(f"  итог:   route={after['route']} status={after['status']} (авто-отправки не было)")
     _trail(client, ticket["ticket_id"])
@@ -117,7 +117,7 @@ def main() -> None:
         "тема REVIEW_REQUIRED — черновик готовится, но уходит человеку",
         "не приходит код подтверждения при входе в личный кабинет",
     )
-    client.post("/admin/run-worker")
+    client.post("/admin/drain-queues")
     before = client.get(f"/tickets/{pending['ticket_id']}").json()
     print(f"  до ревью:    status={before['status']} (авто-отправка запрещена политикой темы)")
     reviewed = client.post(

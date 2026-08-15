@@ -7,11 +7,6 @@ import redis
 from app.config import get_settings
 from app.models import AutomationLevel
 
-POLICY_KEY = "policy:automation"
-SURGE_TEXT_PREFIX = "TEXT:SURGE:"
-SURGE_COUNTER_PREFIX = "surge:"
-
-
 # --- детекция всплеска (architecture.md §6.1) ----------------------------------------------
 
 def bump_surge_counter(client: redis.Redis, topic: str, now: float | None = None) -> None:
@@ -24,7 +19,7 @@ def bump_surge_counter(client: redis.Redis, topic: str, now: float | None = None
     """
     settings = get_settings()
     minute = int((now or time.time()) // 60)
-    key = f"{SURGE_COUNTER_PREFIX}{topic}:{minute}"
+    key = f"{settings.surge_counter_prefix}{topic}:{minute}"
     pipe = client.pipeline()
     pipe.incr(key)
     pipe.expire(key, settings.surge_key_ttl_seconds)
@@ -36,7 +31,7 @@ def surge_count(client: redis.Redis, topic: str, now: float | None = None) -> in
     settings = get_settings()
     minute = int((now or time.time()) // 60)
     keys = [
-        f"{SURGE_COUNTER_PREFIX}{topic}:{minute - offset}"
+        f"{settings.surge_counter_prefix}{topic}:{minute - offset}"
         for offset in range(settings.surge_window_minutes)
     ]
     return sum(int(value) for value in client.mget(keys) if value)
@@ -48,25 +43,25 @@ def surge_text(client: redis.Redis, topic: str) -> str | None:
     Совмещение разрешения и текста в одном ключе — упрощение, названное в
     architecture.md §12: тема без текста считается запрещённой. Безопасно, но негибко.
     """
-    value = client.get(f"{SURGE_TEXT_PREFIX}{topic}")
+    value = client.get(f"{get_settings().surge_text_prefix}{topic}")
     return value.decode() if isinstance(value, bytes) else value
 
 
 def set_surge_text(client: redis.Redis, topic: str, text: str) -> None:
     """Задать текст заглушки (ручка менеджера)."""
-    client.set(f"{SURGE_TEXT_PREFIX}{topic}", text)
+    client.set(f"{get_settings().surge_text_prefix}{topic}", text)
 
 
 def delete_surge_text(client: redis.Redis, topic: str) -> None:
     """Убрать заглушку и тем самым запретить авто-ответ по теме при всплеске."""
-    client.delete(f"{SURGE_TEXT_PREFIX}{topic}")
+    client.delete(f"{get_settings().surge_text_prefix}{topic}")
 
 
 # --- политика автоматизации ----------------------------------------------------------------
 
 def automation_level(client: redis.Redis, topic: str) -> AutomationLevel:
     """Детерминированный гейт по теме. Неизвестная тема — REVIEW_REQUIRED."""
-    value = client.hget(POLICY_KEY, topic)
+    value = client.hget(get_settings().policy_key, topic)
     if value is None:
         return AutomationLevel.REVIEW_REQUIRED
     decoded = value.decode() if isinstance(value, bytes) else value
@@ -78,4 +73,4 @@ def automation_level(client: redis.Redis, topic: str) -> AutomationLevel:
 
 def set_automation_level(client: redis.Redis, topic: str, level: AutomationLevel) -> None:
     """Задать уровень автоматизации темы (ручка комплаенса)."""
-    client.hset(POLICY_KEY, topic, level.value)
+    client.hset(get_settings().policy_key, topic, level.value)

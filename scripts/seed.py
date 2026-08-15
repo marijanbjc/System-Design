@@ -12,7 +12,9 @@ from app.config import get_settings
 from app.ml.encoder import embed
 from app.models import AutomationLevel
 from app.storage import state
+from app.llm.mock import MockLLM
 from app.storage.vector_index import VectorStore
+from app.workers.kb_indexer import KbIndexer
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -55,12 +57,18 @@ def seed(client: redis.Redis) -> dict[str, int]:
             f"t{i}", item["topic"], item["question"], item["answer"], embed(item["question"])
         )
 
+    # Часть статей намеренно идёт без likely_question: индексатор сгенерирует вопрос
+    # сам и мы увидим этот путь в работе.
+    indexer = KbIndexer(vectors, MockLLM())
     articles = json.loads((DATA / "kb.json").read_text(encoding="utf-8"))
     for i, item in enumerate(articles):
-        # Вероятный вопрос гостя индексируется вместе с текстом: пользователь
-        # спрашивает, а статья написана декларативно, и этот мостик поднимает recall.
-        indexed = f"{item.get('likely_question', '')} {item['title']} {item['body']}".strip()
-        vectors.add_article(f"a{i}", item["topic"], item["title"], item["body"], embed(indexed))
+        indexer.index_article(
+            topic=item["topic"],
+            title=item["title"],
+            body=item["body"],
+            likely_question=item.get("likely_question"),
+            doc_id=f"a{i}",
+        )
 
     for topic, level in POLICY.items():
         state.set_automation_level(client, topic, level)

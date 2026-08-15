@@ -12,8 +12,6 @@ import redis
 
 from app.config import get_settings
 
-BUCKET_KEY = "llm:bucket"
-
 # Атомарная выдача разрешения: сначала пополняем ведро по прошедшему времени,
 # затем тратим одно, если есть. Lua нужен, чтобы это не разъезжалось между репликами.
 _TAKE_TOKEN_LUA = """
@@ -55,7 +53,7 @@ class RateLimiter:
         """Взять одно разрешение. False означает «подождать», а не «выбросить задачу»."""
         settings = get_settings()
         allowed = self._script(
-            keys=[BUCKET_KEY],
+            keys=[settings.rate_limit_bucket_key],
             args=[
                 settings.llm_rate_limit_rps,
                 settings.llm_rate_limit_burst,

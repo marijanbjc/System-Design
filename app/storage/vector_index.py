@@ -3,6 +3,12 @@
 Два индекса с одинаковой механикой, но разной ролью:
 - `idx:triples` — предодобренные тройки (обращение, тема, ответ), ядро Tier 1;
 - `idx:kb` — статьи от менеджеров, контекст для генерации в Tier 2.
+
+Важная асимметрия в том, **что именно эмбеддится**. В индексе троек вектор строится по
+обращению пользователя, в индексе базы знаний — по *вероятному вопросу гостя*, а не по
+тексту статьи. Причина: пользователь пишет вопрос, а статья написана декларативно, и
+эмбеддинг вопроса к вопросу совпадает заметно лучше, чем вопрос к справочному тексту.
+Сам текст статьи хранится рядом и отдаётся как контекст, но в поиске не участвует.
 """
 
 from dataclasses import dataclass
@@ -17,12 +23,8 @@ from redisvl.schema import IndexSchema
 
 from app.config import get_settings
 
-TRIPLES_INDEX = "idx:triples"
-TRIPLES_PREFIX = "triple"
-KB_INDEX = "idx:kb"
-KB_PREFIX = "kb"
-
-VECTOR_FIELD = "embedding"
+TRIPLE_FIELDS = ["topic", "question", "answer"]
+KB_FIELDS = ["topic", "likely_question", "title", "body"]
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class Hit:
 
 
 def _schema(name: str, prefix: str, text_fields: list[str]) -> IndexSchema:
+    """Схема индекса: тег темы для фильтрации, текстовые поля и вектор."""
     settings = get_settings()
     return IndexSchema.from_dict(
         {
@@ -43,7 +46,7 @@ def _schema(name: str, prefix: str, text_fields: list[str]) -> IndexSchema:
                 {"name": "topic", "type": "tag"},
                 *({"name": field, "type": "text"} for field in text_fields),
                 {
-                    "name": VECTOR_FIELD,
+                    "name": settings.vector_field,
                     "type": "vector",
                     "attrs": {
                         "dims": settings.embed_dim,
@@ -61,10 +64,15 @@ class VectorStore:
     """Обёртка над двумя индексами. Создание идемпотентно — можно звать на каждом старте."""
 
     def __init__(self, client: redis.Redis) -> None:
+        settings = get_settings()
         self.triples = SearchIndex(
-            _schema(TRIPLES_INDEX, TRIPLES_PREFIX, ["question", "answer"]), redis_client=client
+            _schema(settings.triples_index, settings.triples_prefix, ["question", "answer"]),
+            redis_client=client,
         )
-        self.kb = SearchIndex(_schema(KB_INDEX, KB_PREFIX, ["title", "body"]), redis_client=client)
+        self.kb = SearchIndex(
+            _schema(settings.kb_index, settings.kb_prefix, ["likely_question", "title", "body"]),
+            redis_client=client,
+        )
 
     def ensure(self) -> None:
         """Создать индексы, если их ещё нет."""
@@ -74,33 +82,46 @@ class VectorStore:
     def add_triple(
         self, doc_id: str, topic: str, question: str, answer: str, vector: np.ndarray
     ) -> None:
-        """Положить в индекс предодобренную тройку."""
+        """Положить в индекс предодобренную тройку. Вектор строится по обращению."""
+        settings = get_settings()
         self.triples.load(
             [
                 {
                     "topic": topic,
                     "question": question,
                     "answer": answer,
-                    VECTOR_FIELD: vector.astype(np.float32).tobytes(),
+                    settings.vector_field: vector.astype(np.float32).tobytes(),
                 }
             ],
-            keys=[f"{TRIPLES_PREFIX}:{doc_id}"],
+            keys=[f"{settings.triples_prefix}:{doc_id}"],
         )
 
     def add_article(
-        self, doc_id: str, topic: str, title: str, body: str, vector: np.ndarray
+        self,
+        doc_id: str,
+        topic: str,
+        title: str,
+        body: str,
+        likely_question: str,
+        vector: np.ndarray,
     ) -> None:
-        """Положить в индекс статью базы знаний, загруженную менеджером."""
+        """Положить в индекс статью базы знаний.
+
+        Вектор обязан быть построен по `likely_question`: ищем мы по вопросу, а текст
+        статьи отдаём как контекст (см. пояснение в шапке модуля).
+        """
+        settings = get_settings()
         self.kb.load(
             [
                 {
                     "topic": topic,
+                    "likely_question": likely_question,
                     "title": title,
                     "body": body,
-                    VECTOR_FIELD: vector.astype(np.float32).tobytes(),
+                    settings.vector_field: vector.astype(np.float32).tobytes(),
                 }
             ],
-            keys=[f"{KB_PREFIX}:{doc_id}"],
+            keys=[f"{settings.kb_prefix}:{doc_id}"],
         )
 
     def search_triples(self, vector: np.ndarray, topic: str) -> list[Hit]:
@@ -111,24 +132,25 @@ class VectorStore:
         темой, поиск просто вернёт пусто и мы провалимся в генерацию — направление
         отказа безопасное.
         """
-        query = VectorQuery(
-            vector=vector.astype(np.float32).tolist(),
-            vector_field_name=VECTOR_FIELD,
-            return_fields=["topic", "question", "answer"],
-            num_results=get_settings().retrieval_top_k,
-            filter_expression=Tag("topic") == topic,
-        )
-        return _to_hits(self.triples.query(query), ["topic", "question", "answer"])
+        return self._knn(self.triples, vector, TRIPLE_FIELDS, topic)
 
     def search_kb(self, vector: np.ndarray) -> list[Hit]:
         """KNN по базе знаний. Без фильтра по теме: контекст может лежать где угодно."""
+        return self._knn(self.kb, vector, KB_FIELDS, None)
+
+    @staticmethod
+    def _knn(
+        index: SearchIndex, vector: np.ndarray, fields: list[str], topic: str | None
+    ) -> list[Hit]:
+        settings = get_settings()
         query = VectorQuery(
             vector=vector.astype(np.float32).tolist(),
-            vector_field_name=VECTOR_FIELD,
-            return_fields=["topic", "title", "body"],
-            num_results=get_settings().retrieval_top_k,
+            vector_field_name=settings.vector_field,
+            return_fields=fields,
+            num_results=settings.retrieval_top_k,
+            filter_expression=(Tag("topic") == topic) if topic else None,
         )
-        return _to_hits(self.kb.query(query), ["topic", "title", "body"])
+        return _to_hits(index.query(query), fields)
 
 
 def _to_hits(rows: list[dict[str, Any]], fields: list[str]) -> list[Hit]:

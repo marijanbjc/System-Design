@@ -101,13 +101,15 @@ def add_triple(payload: TripleIn) -> dict[str, str]:
 def add_article(payload: ArticleIn) -> dict[str, str]:
     """Добавить статью базы знаний.
 
-    Вероятный вопрос гостя индексируется вместе с текстом: пользователь спрашивает,
-    а статья написана декларативно, и этот мостик поднимает recall.
+    Поиск идёт по вероятному вопросу гостя, а не по тексту статьи. Если менеджер не
+    приложил формулировку, индексатор сгенерирует её офлайн (см. `KbIndexer`).
     """
-    deps = get_container()
-    doc_id = str(uuid.uuid4())
-    indexed_text = f"{payload.likely_question or ''} {payload.title} {payload.body}".strip()
-    deps.vectors.add_article(doc_id, payload.topic, payload.title, payload.body, embed(indexed_text))
+    doc_id = get_container().kb_indexer.index_article(
+        topic=payload.topic,
+        title=payload.title,
+        body=payload.body,
+        likely_question=payload.likely_question,
+    )
     return {"id": doc_id}
 
 
@@ -138,8 +140,13 @@ def operator_queue() -> list[dict]:
     return streams.peek(get_container().redis, get_settings().stream_review)
 
 
-@router.post("/admin/run-worker", tags=["Админ"])
-def run_worker() -> dict[str, int]:
-    """Разобрать очереди генерации и доставки — замена долгоживущим воркерам в PoC."""
+@router.post("/admin/drain-queues", tags=["Админ"])
+def drain_queues() -> dict[str, int]:
+    """Разобрать очереди генерации и доставки.
+
+    В PoC воркеры не крутятся отдельными процессами, а очереди настоящие: без этой
+    ручки Tier 2 остался бы в `pending_generation` навсегда. В целевой архитектуре
+    её место занимают долгоживущие воркеры.
+    """
     deps = get_container()
     return {"generated": deps.worker.run_once(), "delivered": deps.delivery.run_once()}

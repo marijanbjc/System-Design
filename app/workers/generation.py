@@ -9,8 +9,7 @@ from datetime import datetime, timezone
 import redis
 
 from app.config import get_settings
-from app.llm.base import LLMUnavailable
-from app.llm.mock import MockLLM
+from app.llm.mock import LLMUnavailable, MockLLM
 from app.ml.encoder import embed
 from app.models import Route, Status, Ticket
 from app.preprocessing.pii import rehydrate, scrub

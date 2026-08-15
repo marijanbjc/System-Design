@@ -90,7 +90,7 @@ def test_готовый_ответ_попадает_в_очередь_доста
     from app.api.deps import get_container
 
     body = _post(client, "как оформить возврат товара если он не подошёл по размеру").json()
-    delivered = client.post("/admin/run-worker").json()["delivered"]
+    delivered = client.post("/admin/drain-queues").json()["delivered"]
 
     assert delivered >= 1
     ticket = get_container().audit.load_ticket(body["ticket_id"])
@@ -105,3 +105,19 @@ def test_очередь_оператора_показывает_причину_�
 
     assert any(task["ticket_id"] == body["ticket_id"] for task in queue)
     assert all("reason" in task for task in queue)
+
+
+def test_вопрос_к_статье_генерируется_если_менеджер_его_не_приложил(client) -> None:
+    """Поиск по БЗ идёт по вопросу гостя, поэтому вопрос обязан быть у каждой статьи."""
+    from app.api.deps import get_container
+
+    deps = get_container()
+    doc_id = deps.kb_indexer.index_article(
+        topic="delivery",
+        title="Доставка в выходные",
+        body="Курьерская доставка работает и в выходные дни. Интервалы те же, что в будни.",
+    )
+    stored = deps.redis.hget(f"kb:{doc_id}", "likely_question")
+
+    assert stored, "статья проиндексирована без вопроса — искать её будет нечем"
+    assert "доставка в выходные" in stored.decode().lower()

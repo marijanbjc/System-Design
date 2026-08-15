@@ -16,6 +16,7 @@ from app.routing.router import Router
 from app.storage.audit import AuditStore
 from app.storage.vector_index import VectorStore
 from app.workers.delivery import DeliveryWorker
+from app.workers.kb_indexer import KbIndexer
 from app.workers.generation import GenerationWorker
 
 
@@ -29,6 +30,7 @@ class Container:
     router: Router
     worker: GenerationWorker
     delivery: DeliveryWorker
+    kb_indexer: KbIndexer
 
 
 container: Container | None = None
@@ -44,14 +46,16 @@ def build_container() -> Container:
 
     audit = AuditStore()
     classifier = Classifier()
+    llm = MockLLM()
 
     return Container(
         redis=client,
         vectors=vectors,
         audit=audit,
         router=Router(client, classifier, vectors, audit),
-        worker=GenerationWorker(client, vectors, audit, MockLLM()),
+        worker=GenerationWorker(client, vectors, audit, llm),
         delivery=DeliveryWorker(client, audit),
+        kb_indexer=KbIndexer(vectors, llm),
     )
 
 

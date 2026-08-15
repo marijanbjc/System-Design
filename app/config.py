@@ -70,6 +70,17 @@ class Settings(BaseSettings):
     stream_review: str = "stream:review"
     stream_delivery: str = "stream:delivery"
 
+    # --- имена ключей и индексов Redis ---
+    triples_index: str = "idx:triples"
+    triples_prefix: str = "triple"
+    kb_index: str = "idx:kb"
+    kb_prefix: str = "kb"
+    vector_field: str = "embedding"
+    policy_key: str = "policy:automation"
+    surge_text_prefix: str = "TEXT:SURGE:"
+    surge_counter_prefix: str = "surge:"
+    rate_limit_bucket_key: str = "llm:bucket"
+
 
 @lru_cache
 def get_settings() -> Settings:
