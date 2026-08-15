@@ -1,13 +1,11 @@
-.PHONY: install up down seed demo test run clean
+.PHONY: install up down seed demo test lint run clean
 
 PY := .venv/bin/python
-PIP := .venv/bin/pip
 
 install:
 	python3.11 -m venv .venv
-	$(PIP) install -q -U pip
-	$(PIP) install -q "fastapi>=0.115" "uvicorn[standard]>=0.32" "redis>=6" \
-		"pydantic>=2.9" "pydantic-settings>=2.6" "redisvl>=0.25" "pytest>=8.3" "httpx>=0.27"
+	.venv/bin/pip install -q -U pip
+	.venv/bin/pip install -q -e ".[dev]"
 
 up:
 	docker compose up -d
@@ -17,17 +15,22 @@ up:
 down:
 	docker compose down
 
-seed:
-	PYTHONPATH=. $(PY) scripts/seed.py
+seed: up
+	$(PY) -m scripts.seed
 
 demo: up
-	PYTHONPATH=. $(PY) scripts/demo.py
+	$(PY) -m scripts.demo
 
 test: up
-	PYTHONPATH=. $(PY) -m pytest -q
+	$(PY) -m pytest -q
 
-run: up seed
-	PYTHONPATH=. .venv/bin/uvicorn app.main:app --reload --port 8000
+lint:
+	.venv/bin/ruff check app scripts tests
+	.venv/bin/ruff format --check app scripts tests
+
+run: seed
+	.venv/bin/uvicorn app.main:app --reload --port 8000
 
 clean:
 	rm -f audit.db
+	find . -path ./.venv -prune -o -name __pycache__ -type d -exec rm -rf {} +

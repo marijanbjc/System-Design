@@ -19,3 +19,6 @@ audit.db
 # не входит в сдачу
 CLAUDE.md
 System_Design_ITMO.docx
+
+# сборочные артефакты
+*.egg-info/
