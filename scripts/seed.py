@@ -9,10 +9,10 @@ from pathlib import Path
 import redis
 
 from app.config import get_settings
+from app.llm.mock import MockLLM
 from app.ml.encoder import embed
 from app.models import AutomationLevel
 from app.storage import state
-from app.llm.mock import MockLLM
 from app.storage.vector_index import VectorStore
 from app.workers.kb_indexer import KbIndexer
 
@@ -24,6 +24,7 @@ POLICY: dict[str, AutomationLevel] = {
     "returns": AutomationLevel.AUTO_OK,
     "delivery": AutomationLevel.AUTO_OK,
     "loyalty": AutomationLevel.AUTO_OK,
+    "catalog": AutomationLevel.AUTO_OK,
     "account": AutomationLevel.REVIEW_REQUIRED,
     "payment": AutomationLevel.REVIEW_REQUIRED,
     "payment_dispute": AutomationLevel.OPERATOR_ONLY,
