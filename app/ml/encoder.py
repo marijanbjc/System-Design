@@ -37,7 +37,7 @@ def embed(text: str) -> np.ndarray:
         # («возврат» / «возврата»), который чистый мешок слов потерял бы.
         padded = f"^{token}$"
         for i in range(len(padded) - 2):
-            vector[_bucket(padded[i : i + 3], dim)] += 0.5
+            vector[_bucket(padded[i : i + 3], dim)] += settings.encoder_trigram_weight
 
     norm = float(np.linalg.norm(vector))
     if norm == 0.0:

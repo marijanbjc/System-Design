@@ -12,6 +12,7 @@
 
 from dataclasses import dataclass
 
+from app.config import get_settings
 from app.models import Risk
 
 
@@ -43,17 +44,15 @@ _RULES: list[tuple[str, tuple[str, ...], Risk]] = [
     ("loyalty", ("бонус", "промокод", "балл", "лояльност", "скидк"), Risk.LOW),
 ]
 
-MATCHED_CONFIDENCE = 0.9
-FALLBACK_CONFIDENCE = 0.4
-
 
 class Classifier:
     """Определяет тему и риск обращения по ключевым словам."""
 
     def predict(self, text: str) -> Prediction:
         """Вернуть тему, риск и уверенность для нормализованного текста обращения."""
+        settings = get_settings()
         lowered = text.lower()
         for topic, keywords, risk in _RULES:
             if any(keyword in lowered for keyword in keywords):
-                return Prediction(topic=topic, risk=risk, conf_cls=MATCHED_CONFIDENCE)
-        return Prediction(topic="general", risk=Risk.LOW, conf_cls=FALLBACK_CONFIDENCE)
+                return Prediction(topic=topic, risk=risk, conf_cls=settings.classifier_matched_confidence)
+        return Prediction(topic="general", risk=Risk.LOW, conf_cls=settings.classifier_fallback_confidence)

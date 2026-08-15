@@ -9,12 +9,13 @@ from datetime import datetime, timezone
 import redis
 
 from app.config import get_settings
-from app.llm.base import LLMClient, LLMUnavailable
-from app.models import Route, Status, Ticket
+from app.llm.base import LLMUnavailable
+from app.llm.mock import MockLLM
 from app.ml.encoder import embed
+from app.models import Route, Status, Ticket
 from app.preprocessing.pii import rehydrate, scrub
 from app.queues import streams
-from app.queues.limiter import BudgetBreaker, RateLimiter
+from app.queues.limiter import RateLimiter
 from app.routing.gates import post_gate, pre_gate
 from app.storage import state
 from app.storage.audit import AuditStore
@@ -29,14 +30,13 @@ class GenerationWorker:
         client: redis.Redis,
         vectors: VectorStore,
         audit: AuditStore,
-        llm: LLMClient,
+        llm: MockLLM,
     ) -> None:
         self._redis = client
         self._vectors = vectors
         self._audit = audit
         self._llm = llm
         self._limiter = RateLimiter(client)
-        self._budget = BudgetBreaker(client)
 
     def run_once(self, batch: int = 10) -> int:
         """Обработать накопившиеся задачи; возвращает число обработанных тикетов."""
@@ -50,8 +50,7 @@ class GenerationWorker:
     def process(self, ticket: Ticket) -> Ticket:
         """Полный асинхронный путь одного тикета."""
         settings = get_settings()
-        vector = embed(ticket.text_normalized)
-        chunks = self._vectors.search_kb(vector)
+        chunks = self._vectors.search_kb(embed(ticket.text_normalized))
         if chunks:
             ticket.best_chunk_sim = chunks[0].sim
             ticket.retrieved_chunk_ids = [hit.doc_id for hit in chunks]
@@ -60,15 +59,13 @@ class GenerationWorker:
         if not decision.auto_send:
             return self._to_review(ticket, reason=decision.reason)
 
-        if self._budget.is_open():
-            return self._to_review(ticket, reason="budget_breaker_open")
-
         # Ограничитель защищает провайдера: задача ждёт разрешения, но не теряется.
         if not self._limiter.acquire(timeout=settings.llm_timeout_seconds):
             return self._to_review(ticket, reason="rate_limit_timeout")
 
+        # Обезличивание — единственная точка, после которой текст покидает контур.
+        # Карта замен живёт в рамках этого вызова: регидрация происходит здесь же.
         scrubbed, pii_map = scrub(ticket.text_normalized)
-        state.store_pii_map(self._redis, ticket.ticket_id, pii_map)
         self._audit.log(
             ticket.ticket_id, "Generated.scrubbed", placeholders=sorted(pii_map.keys())
         )
@@ -80,10 +77,9 @@ class GenerationWorker:
             self._audit.log(ticket.ticket_id, "Generated.failed", error=str(exc))
             return self._to_review(ticket, reason="llm_unavailable")
 
-        self._budget.charge(tokens)
         ticket.tokens = tokens
-        ticket.cost = round(tokens * 1e-5, 6)
-        ticket.llm_model = getattr(self._llm, "model_name", "unknown")
+        ticket.cost = round(tokens * settings.llm_cost_per_token, 6)
+        ticket.llm_model = self._llm.model_name
         ticket.prompt_version = settings.llm_prompt_version
         ticket.conf_gen = draft.confidence
         ticket.llm_flags = draft.model_dump(exclude={"answer_draft"})

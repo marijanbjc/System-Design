@@ -114,7 +114,6 @@ class Ticket(BaseModel):
 
     route: Route | None = None
     status: Status = Status.NEW
-    is_typical: bool = False
     auto_sent: bool = False
     operator_touched: bool = False
     deny_listed: bool = False

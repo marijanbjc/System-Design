@@ -1,4 +1,4 @@
-"""Состояние в Redis: счётчики всплеска, политика автоматизации, заглушки, волт ПДН."""
+"""Состояние в Redis: счётчики всплеска, политика автоматизации, заглушки на всплеск."""
 
 import time
 
@@ -6,12 +6,10 @@ import redis
 
 from app.config import get_settings
 from app.models import AutomationLevel
-from app.preprocessing.pii import PiiMap
 
 POLICY_KEY = "policy:automation"
 SURGE_TEXT_PREFIX = "TEXT:SURGE:"
 SURGE_COUNTER_PREFIX = "surge:"
-PII_VAULT_PREFIX = "pii:"
 
 
 # --- детекция всплеска (architecture.md §6.1) ----------------------------------------------
@@ -81,26 +79,3 @@ def automation_level(client: redis.Redis, topic: str) -> AutomationLevel:
 def set_automation_level(client: redis.Redis, topic: str, level: AutomationLevel) -> None:
     """Задать уровень автоматизации темы (ручка комплаенса)."""
     client.hset(POLICY_KEY, topic, level.value)
-
-
-# --- волт соответствий ПДН -----------------------------------------------------------------
-
-def store_pii_map(client: redis.Redis, ticket_id: str, mapping: PiiMap) -> None:
-    """Сохранить пары «плейсхолдер → значение» с запасом по времени на очередь ревью."""
-    if not mapping:
-        return
-    settings = get_settings()
-    key = f"{PII_VAULT_PREFIX}{ticket_id}"
-    client.hset(key, mapping=dict(mapping))
-    client.expire(key, settings.pii_vault_ttl_seconds)
-
-
-def load_pii_map(client: redis.Redis, ticket_id: str) -> PiiMap:
-    """Достать карту замен, чтобы восстановить значения в ответе."""
-    raw = client.hgetall(f"{PII_VAULT_PREFIX}{ticket_id}")
-    return PiiMap(
-        {
-            (k.decode() if isinstance(k, bytes) else k): (v.decode() if isinstance(v, bytes) else v)
-            for k, v in raw.items()
-        }
-    )

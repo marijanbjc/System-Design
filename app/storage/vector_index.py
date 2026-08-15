@@ -103,7 +103,7 @@ class VectorStore:
             keys=[f"{KB_PREFIX}:{doc_id}"],
         )
 
-    def search_triples(self, vector: np.ndarray, topic: str, limit: int = 3) -> list[Hit]:
+    def search_triples(self, vector: np.ndarray, topic: str) -> list[Hit]:
         """KNN по тройкам с фильтром по теме, которую уже определил классификатор.
 
         Фильтр — то, что не даёт слипнуться лексически близким, но разным по смыслу
@@ -115,18 +115,18 @@ class VectorStore:
             vector=vector.astype(np.float32).tolist(),
             vector_field_name=VECTOR_FIELD,
             return_fields=["topic", "question", "answer"],
-            num_results=limit,
+            num_results=get_settings().retrieval_top_k,
             filter_expression=Tag("topic") == topic,
         )
         return _to_hits(self.triples.query(query), ["topic", "question", "answer"])
 
-    def search_kb(self, vector: np.ndarray, limit: int = 3) -> list[Hit]:
+    def search_kb(self, vector: np.ndarray) -> list[Hit]:
         """KNN по базе знаний. Без фильтра по теме: контекст может лежать где угодно."""
         query = VectorQuery(
             vector=vector.astype(np.float32).tolist(),
             vector_field_name=VECTOR_FIELD,
             return_fields=["topic", "title", "body"],
-            num_results=limit,
+            num_results=get_settings().retrieval_top_k,
         )
         return _to_hits(self.kb.query(query), ["topic", "title", "body"])
 

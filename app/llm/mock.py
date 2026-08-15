@@ -1,4 +1,4 @@
-"""Детерминированный мок LLM — провайдер по умолчанию, работает без API-ключа.
+"""Детерминированный мок LLM — единственная реализация в PoC, работает без API-ключа.
 
 Он не перефразирует: сшивает найденные фрагменты в ответ, а флаги выводит из
 измеримых свойств входа. За счёт этого демо воспроизводимо, а гейт наблюдаем —
@@ -7,6 +7,7 @@
 
 import re
 
+from app.config import get_settings
 from app.llm.base import LLMDraft, LLMUnavailable, build_prompt
 from app.preprocessing.pii import contains_pii
 
@@ -14,7 +15,10 @@ _OFF_TOPIC_MARKERS = re.compile(
     r"\b(погод\w+|политик\w+|президент|курс\s+валют|рецепт|футбол)\b", re.IGNORECASE
 )
 _TOXIC_MARKERS = re.compile(r"\b(идиот|дебил|тварь|ублюд\w+|убью)\b", re.IGNORECASE)
-_FAIL_MARKER = "__LLM_FAIL__"  # позволяет демонстрировать путь деградации
+_PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
+_CONTENT_WORD = re.compile(r"\w{4,}")
+
+FAIL_MARKER = "__LLM_FAIL__"  # позволяет демонстрировать путь деградации
 
 
 class MockLLM:
@@ -24,7 +28,9 @@ class MockLLM:
 
     def generate(self, question_scrubbed: str, context_chunks: list[str]) -> tuple[LLMDraft, int]:
         """Сгенерировать структурированный черновик по найденному контексту."""
-        if _FAIL_MARKER in question_scrubbed:
+        settings = get_settings()
+
+        if FAIL_MARKER in question_scrubbed:
             raise LLMUnavailable("мок провайдера принудительно уронён")
 
         # Подстраховка: стадия обезличивания идёт раньше, но если бы сырые ПДН всё же
@@ -33,21 +39,30 @@ class MockLLM:
             raise LLMUnavailable("отказ обрабатывать текст, в котором остались ПДН")
 
         prompt = build_prompt(question_scrubbed, context_chunks)
-        tokens = max(1, len(prompt) // 4)
+        tokens = max(1, len(prompt) // settings.mock_chars_per_token)
 
         context_score = self._context_score(question_scrubbed, context_chunks)
         is_on_topic = not bool(_OFF_TOPIC_MARKERS.search(question_scrubbed))
         is_toxic = bool(_TOXIC_MARKERS.search(question_scrubbed))
+        can_answer = (
+            bool(context_chunks)
+            and context_score >= settings.mock_min_context_for_answer
+            and is_on_topic
+            and not is_toxic
+        )
 
-        if context_chunks and context_score >= 0.5 and is_on_topic and not is_toxic:
+        if can_answer:
             draft = (
                 f"По вашему вопросу: {context_chunks[0].strip()} "
                 "Если что-то осталось непонятным, ответьте на это сообщение."
             )
-            confidence = min(0.95, 0.55 + context_score * 0.4)
+            confidence = min(
+                settings.mock_confidence_cap,
+                settings.mock_confidence_base + context_score * settings.mock_confidence_scale,
+            )
         else:
             draft = "Недостаточно данных для ответа, передаю обращение оператору."
-            confidence = 0.25
+            confidence = settings.mock_low_confidence
 
         return (
             LLMDraft(
@@ -71,9 +86,8 @@ class MockLLM:
             return 0.0
         # Плейсхолдеры после обезличивания смысла не несут; учитывать их в знаменателе
         # значило бы занижать достаточность контекста каждому тикету с ПДН.
-        without_placeholders = re.sub(r"\[[A-Z]+_\d+\]", " ", question)
-        question_words = {w for w in re.findall(r"\w{4,}", without_placeholders.lower())}
+        question_words = set(_CONTENT_WORD.findall(_PLACEHOLDER.sub(" ", question).lower()))
         if not question_words:
             return 0.0
-        chunk_words = {w for w in re.findall(r"\w{4,}", " ".join(chunks).lower())}
+        chunk_words = set(_CONTENT_WORD.findall(" ".join(chunks).lower()))
         return round(len(question_words & chunk_words) / len(question_words), 3)

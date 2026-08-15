@@ -8,6 +8,8 @@
 
 import re
 
+from app.config import get_settings
+
 _HTML_TAG = re.compile(r"<[^>]+>")
 _QUOTE_LINE = re.compile(r"^\s*(>+|On .+ wrote:|\d{1,2}\.\d{1,2}\.\d{2,4}.*пишет:).*$", re.MULTILINE)
 _SIGNATURE = re.compile(
@@ -17,8 +19,6 @@ _SIGNATURE = re.compile(
 _WHITESPACE = re.compile(r"[ \t\r\f\v]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
 
-MAX_LENGTH = 4000
-
 
 def normalize(text_raw: str) -> str:
     """Срезать разметку, цитаты и подпись, схлопнуть пробелы, обрезать по длине."""
@@ -27,4 +27,4 @@ def normalize(text_raw: str) -> str:
     text = _SIGNATURE.sub("", text)
     text = _WHITESPACE.sub(" ", text)
     text = _BLANK_LINES.sub("\n\n", text)
-    return text.strip()[:MAX_LENGTH]
+    return text.strip()[: get_settings().max_text_length]
