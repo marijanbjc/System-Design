@@ -111,7 +111,6 @@ class Ticket(BaseModel):
     topic: str = "unknown"
     risk: Risk = Risk.MEDIUM
     conf_cls: float = 0.0
-    conf_risk: float = 0.0
 
     route: Route | None = None
     status: Status = Status.NEW

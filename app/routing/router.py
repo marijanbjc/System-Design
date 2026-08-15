@@ -47,12 +47,10 @@ class Router:
         ticket.injection_suspected = detect_injection(ticket.text_normalized)
         ticket.unsafe_prefilter = detect_unsafe(ticket.text_normalized)
 
-        vector = embed(ticket.text_normalized)
-        prediction = self._classifier.predict(vector)
+        prediction = self._classifier.predict(ticket.text_normalized)
         ticket.topic = prediction.topic
         ticket.risk = prediction.risk
         ticket.conf_cls = prediction.conf_cls
-        ticket.conf_risk = prediction.conf_risk
 
         level = state.automation_level(self._redis, ticket.topic)
         # Низкая уверенность классификатора означает, что теме мы не доверяем, — значит
@@ -67,7 +65,6 @@ class Router:
             topic=ticket.topic,
             risk=ticket.risk,
             conf_cls=ticket.conf_cls,
-            conf_risk=ticket.conf_risk,
             level=level,
             injection=ticket.injection_suspected,
             unsafe=ticket.unsafe_prefilter,
@@ -92,7 +89,7 @@ class Router:
             return self._surge_answer(ticket, stub, count)
 
         # 3) Типовой вопрос: близкий кандидат в индексе троек, поиск с фильтром по теме.
-        hits = self._vectors.search_triples(vector, ticket.topic)
+        hits = self._vectors.search_triples(embed(ticket.text_normalized), ticket.topic)
         if hits:
             ticket.best_sim = hits[0].sim
             ticket.retrieved_triple_ids = [hit.doc_id for hit in hits]

@@ -9,8 +9,8 @@ from dataclasses import dataclass
 import redis
 
 from app.config import get_settings
-from app.llm.factory import build_llm
-from app.ml.classifier import load_classifier
+from app.llm.mock import MockLLM
+from app.ml.classifier import Classifier
 from app.routing.router import Router
 from app.storage.audit import AuditStore
 from app.storage.vector_index import VectorStore
@@ -40,14 +40,14 @@ def build_container() -> Container:
     vectors.ensure()
 
     audit = AuditStore()
-    classifier = load_classifier()
+    classifier = Classifier()
 
     return Container(
         redis=client,
         vectors=vectors,
         audit=audit,
         router=Router(client, classifier, vectors, audit),
-        worker=GenerationWorker(client, vectors, audit, build_llm()),
+        worker=GenerationWorker(client, vectors, audit, MockLLM()),
     )
 
 

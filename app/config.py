@@ -30,8 +30,6 @@ class Settings(BaseSettings):
     tau_conf: float = 0.70  # самооценка уверенности модели → авто-отправка
     tau_ctx: float = 0.55  # скор достаточности контекста → авто-отправка
     conf_cls_min: float = 0.45  # ниже — теме не доверяем и уходим к безопасному дефолту
-    risk_high_score: float = 0.60  # скор риск-головы → «high»
-    risk_medium_score: float = 0.35  # скор риск-головы → «medium»
 
     # --- детекция всплеска (architecture.md §6.1) ---
     surge_window_minutes: int = 10
@@ -39,7 +37,6 @@ class Settings(BaseSettings):
     surge_threshold: int = 5  # намеренно низкий, чтобы демо могло его перебить
 
     # --- ограничение частоты и бюджет LLM (architecture.md §9) ---
-    llm_provider: str = "mock"  # "mock" | "openai"
     llm_model: str = "mock-deterministic-v1"
     llm_prompt_version: str = "v1"
     llm_rate_limit_rps: float = 2.0
@@ -47,9 +44,6 @@ class Settings(BaseSettings):
     llm_daily_token_budget: int = 200_000
     llm_timeout_seconds: float = 20.0
 
-    # --- OpenAI-совместимый клиент (используется только при llm_provider == "openai") ---
-    openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
 
     # --- волт ПДН: TTL должен пережить очередь ревью оператором ---
     pii_vault_ttl_seconds: int = 3600
